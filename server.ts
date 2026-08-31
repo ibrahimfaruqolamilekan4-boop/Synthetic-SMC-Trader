@@ -118,7 +118,7 @@ app.get("/api/health", (req, res) => {
 // Chart Analysis endpoint
 app.post("/api/analyze-chart", async (req: express.Request, res: express.Response): Promise<void> => {
   try {
-    const { image, images, symbol, timeframe, tradeHistory, learnings } = req.body;
+    const { image, images, symbol, timeframe, tradeHistory, learnings, currentPrice } = req.body;
 
     if (!image && (!images || !Array.isArray(images) || images.length === 0)) {
       res.status(400).json({ error: "Missing uploaded chart image parameters." });
@@ -231,6 +231,7 @@ ${lostTrades.slice(0, 5).map((t: any, i: number) => `  * ${t.symbol} Setup at En
     const systemPromptMessage = `You are an elite Synthetic Indices SMC Master Mentor, Computer Vision expert, and full-stack Next.js developer with deep knowledge of Deriv platform. Specialize in master-class analysis of Synthetic Indices and Smart Money Concepts. Specialize also in auto-annotating charts as a Vision system. Specifying precision confluences.
  
 Your task is to analyze the uploaded chart screenshots (which might contain one single chart OR a set of three multi-timeframe charts: 30-minute, 4-hour, and 1-day) of ${symbol || 'Synthetic Index'} and outline an executable trading plan.
+${currentPrice ? `The exact live Deriv market price at the time of this scan is: **${currentPrice}**. Use this precise price to calculate extremely accurate Entry, Stop Loss, and Take Profit levels based on the structures you see.` : ''}
 Look closely at the candle wicks, trend direction, order blocks, vacuums, voids, FVGs, and scale markers on the charts.
 
 ${reinforcementLearningPrompt}

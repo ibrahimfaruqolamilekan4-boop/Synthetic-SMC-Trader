@@ -306,14 +306,16 @@ export default function App() {
   };
 
   // Call Express processing service for SMC scanning
-  const startSMCAnalysis = async () => {
+  const startSMCAnalysis = async (overrideImage?: string) => {
+    const targetImage = overrideImage || imagePreview;
+
     if (isMtfMode) {
       if (!mtfImages.m30.preview || !mtfImages.h4.preview || !mtfImages.d1.preview) {
         setErrorMessage("To execute the top-down mechanical strategy, please upload screenshots for all three timeframes: 30M, 4H, and 1D.");
         return;
       }
     } else {
-      if (!imagePreview) {
+      if (!targetImage) {
         setErrorMessage("Please load a MT5 or TradingView chart print screenshot to analyze.");
         return;
       }
@@ -340,6 +342,40 @@ export default function App() {
         console.warn("Could not fetch user learnings for reinforcement learning:", le);
       }
 
+      // Fetch Live Deriv API current price to replace hardcoded values
+      let currentPrice: number | null = null;
+      try {
+        currentPrice = await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error("Deriv API Timeout")), 2500);
+          const derivAppId = (import.meta as any).env?.VITE_DERIV_APP_ID || "1089";
+          const ws = new WebSocket(`wss://ws.binaryws.com/websockets/v3?app_id=${derivAppId}`);
+          
+          ws.onopen = () => {
+            const tk = symbol.ticker;
+            const derivSymbol = tk === "V10" ? "R_10" : tk === "V25" ? "R_25" : tk === "V50" ? "R_50" : tk === "V75" ? "R_75" : tk === "V100" ? "R_100" :
+                                tk === "B1000" ? "BOOM1000" : tk === "B500" ? "BOOM500" : tk === "C1000" ? "CRASH1000" : tk === "C500" ? "CRASH500" :
+                                tk === "STEP" ? "STPRNG" : tk === "J100" ? "JD100" : "R_75";
+            ws.send(JSON.stringify({ ticks: derivSymbol }));
+          };
+          ws.onmessage = (msg) => {
+            const data = JSON.parse(msg.data);
+            if (data.error) {
+               reject(new Error(data.error.message));
+            } else if (data.tick && data.tick.quote) {
+               clearTimeout(timeout);
+               ws.close();
+               resolve(Number(data.tick.quote));
+            }
+          };
+          ws.onerror = (err) => {
+            clearTimeout(timeout);
+            reject(err);
+          };
+        });
+      } catch (e) {
+        console.warn("Could not fetch live Deriv market data:", e);
+      }
+
       const requestBody = isMtfMode
         ? {
             images: [mtfImages.m30.preview, mtfImages.h4.preview, mtfImages.d1.preview],
@@ -347,13 +383,15 @@ export default function App() {
             timeframe: "30M", // Primary focus
             tradeHistory: trades,
             learnings: learningsData,
+            currentPrice: currentPrice
           }
         : {
-            image: imagePreview,
+            image: targetImage,
             symbol: customSymbolText ? customSymbolText : symbol.name,
             timeframe: timeframe,
             tradeHistory: trades,
             learnings: learningsData,
+            currentPrice: currentPrice
           };
 
       const response = await fetch("/api/analyze-chart", {
@@ -953,7 +991,7 @@ export default function App() {
                     // Also switch context automatically
                     setIsMtfMode(false);
                     setAnalyzerSubTab("drawing");
-                    setTimeout(() => startSMCAnalysis(), 100);
+                    setTimeout(() => startSMCAnalysis(dataUrl), 100);
                   }}
                   onSyncLevels={(levels) => {
                     setActiveLevels(levels);
