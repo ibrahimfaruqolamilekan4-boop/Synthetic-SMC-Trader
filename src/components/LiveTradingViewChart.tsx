@@ -820,7 +820,7 @@ export default function LiveTradingViewChart({
           const res = JSON.parse(event.data);
           
           if (res.error) {
-            console.error("Deriv API Error:", res.error);
+            console.warn("Deriv API Warning:", res.error.message);
             setDerivError(res.error.message || "Deriv stream error.");
             setIsDerivLoading(false);
             return;
@@ -906,12 +906,12 @@ export default function LiveTradingViewChart({
             }
           }
         } catch (err) {
-          console.error("Failed to parse Deriv WebSocket message:", err);
+          console.warn("Failed to parse Deriv WebSocket message");
         }
       };
 
       ws.onerror = (err) => {
-        console.error("Deriv WebSocket Error:", err);
+        console.warn("Deriv WebSocket Connection Issue. Using local simulation fallback.");
         setDerivError("Failed to connect to Deriv API server. Check your network or App ID.");
         setDerivConnStatus("DISCONNECTED");
         setIsDerivLoading(false);
