@@ -16,7 +16,9 @@ import {
   UserCheck, 
   Sparkles,
   Code,
-  ExternalLink
+  ExternalLink,
+  RefreshCw,
+  Zap
 } from "lucide-react";
 
 export default function DatabaseSetup({ onConfigChange }: { onConfigChange: () => void }) {
@@ -25,45 +27,85 @@ export default function DatabaseSetup({ onConfigChange }: { onConfigChange: () =
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState("");
 
-  // GitHub Auto-Sync states
-  const [ghToken, setGhToken] = useState("");
-  const [ghOwner, setGhOwner] = useState("");
-  const [ghRepo, setGhRepo] = useState("");
-  const [ghBranch, setGhBranch] = useState("main");
-  const [ghLoading, setGhLoading] = useState(false);
-  const [ghResult, setGhResult] = useState<{ success: boolean; message: string } | null>(null);
+  // Gemini API Key state
+  const [geminiKeyInput, setGeminiKeyInput] = useState(
+    () => (typeof window !== "undefined" ? localStorage.getItem("custom_gemini_api_key") || "" : "")
+  );
+  const [geminiKeySaved, setGeminiKeySaved] = useState(false);
+  const [healthStatus, setHealthStatus] = useState<string | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
 
-  const handleGitHubSync = async () => {
-    if (!ghToken || !ghOwner || !ghRepo) {
-      setGhResult({ success: false, message: "Please provide your GitHub Token, Owner/Username, and Repository Name." });
-      return;
-    }
-    setGhLoading(true);
-    setGhResult(null);
-    try {
-      const res = await fetch("/api/github-sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: ghToken,
-          owner: ghOwner,
-          repo: ghRepo,
-          branch: ghBranch || "main",
-          commitMessage: "feat: automated push of AI Synthetic Trading workstation and Deriv API workspace"
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setGhResult({ success: true, message: `Successfully pushed ${data.filesCount} files to ${ghOwner}/${ghRepo} (${ghBranch || "main"})! Commit SHA: ${data.commitSha.substring(0, 7)}` });
+
+
+  const handleSaveGeminiKey = () => {
+    if (typeof window !== "undefined") {
+      if (geminiKeyInput.trim()) {
+        localStorage.setItem("custom_gemini_api_key", geminiKeyInput.trim());
+        setGeminiKeySaved(true);
+        setTimeout(() => setGeminiKeySaved(false), 2500);
       } else {
-        setGhResult({ success: false, message: data.error || "Failed to push to GitHub repository." });
+        localStorage.removeItem("custom_gemini_api_key");
+        setGeminiKeySaved(true);
+        setTimeout(() => setGeminiKeySaved(false), 2500);
       }
-    } catch (err: any) {
-      setGhResult({ success: false, message: err.message || "Network error during GitHub synchronization." });
-    } finally {
-      setGhLoading(false);
     }
   };
+
+  const handleClearGeminiKey = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("custom_gemini_api_key");
+      setGeminiKeyInput("");
+      setGeminiKeySaved(false);
+    }
+  };
+
+  const handleTestHealth = async () => {
+    setHealthLoading(true);
+    setHealthStatus(null);
+    try {
+      const res = await fetch(`/api/health?_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache"
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.status === "ok") {
+        setHealthStatus(`Connected! Server responded OK at ${new Date(data.time).toLocaleTimeString()}`);
+      } else {
+        setHealthStatus(`Server responded with unexpected status: ${res.status}`);
+      }
+    } catch (e: any) {
+      setHealthStatus(`Connection failed: ${e.message || "Network Error"}`);
+    } finally {
+      setHealthLoading(false);
+    }
+  };
+
+  const handlePurgeCacheAndReload = async () => {
+    if (typeof window !== "undefined") {
+      try {
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const reg of regs) {
+            await reg.unregister();
+          }
+        }
+        if ("caches" in window) {
+          const keys = await caches.keys();
+          for (const k of keys) {
+            await caches.delete(k);
+          }
+        }
+      } catch (e) {
+        console.warn("Cache purge error:", e);
+      }
+      window.location.reload();
+    }
+  };
+
+
 
   useEffect(() => {
     // Listen to Firebase Auth state
@@ -273,98 +315,120 @@ CREATE TABLE IF NOT EXISTS trades (
         )}
       </div>
 
-      {/* GitHub Automated Sync & Push */}
+
+
+      {/* Gemini AI & Vercel Deployment Setup */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 relative overflow-hidden">
-        <div className="absolute top-0 right-0 h-48 w-48 bg-cyan-500/5 blur-[80px] rounded-full pointer-events-none"></div>
         <div className="flex items-center gap-3 mb-4">
-          <div className="bg-cyan-500/10 border border-cyan-500/20 p-2.5 rounded-xl text-cyan-400">
-            <Code className="h-6 w-6" />
+          <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl text-emerald-600">
+            <Key className="h-6 w-6" />
           </div>
           <div>
             <h3 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
-              Automated GitHub Repository Sync & Push
-              <span className="text-xs bg-cyan-950 border border-cyan-800 px-2 py-0.5 rounded-full text-cyan-300">
-                Octokit Powered
+              Gemini AI & Vercel Deployment Control
+              <span className="text-xs bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-emerald-700 font-semibold">
+                Direct Device Key
               </span>
             </h3>
-            <p className="text-xs text-slate-600">Automatically push all project files, AI scanner components, and trading modules to your GitHub repository</p>
+            <p className="text-xs text-slate-600">
+              Configure your Gemini API key for Vercel production or override locally on this browser
+            </p>
           </div>
         </div>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">GitHub Personal Access Token (PAT)</label>
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-2">
+            <p className="text-slate-700 leading-relaxed">
+              <strong>How Vercel Works:</strong> On Vercel, the environment variable <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-900 font-mono">GEMINI_API_KEY</code> must be added in your <strong>Vercel Dashboard &gt; Project &gt; Settings &gt; Environment Variables</strong>.
+            </p>
+            <p className="text-slate-600 leading-relaxed">
+              Alternatively, you can paste your Gemini API Key below. It will be stored securely in this browser&apos;s local memory and sent with every analysis request:
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Custom Gemini API Key (Optional Override)
+            </label>
+            <div className="flex gap-2">
               <input
                 type="password"
-                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                value={ghToken}
-                onChange={(e) => setGhToken(e.target.value)}
-                className="w-true w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-cyan-500"
+                placeholder="AIzaSy..."
+                value={geminiKeyInput}
+                onChange={(e) => setGeminiKeyInput(e.target.value)}
+                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-500 font-mono"
               />
-              <p className="text-[10px] text-slate-500 mt-1">Needs `repo` or `public_repo` scope permissions.</p>
+              <button
+                onClick={handleSaveGeminiKey}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check className="h-3.5 w-3.5" />
+                Save Key
+              </button>
+              {geminiKeyInput && (
+                <button
+                  onClick={handleClearGeminiKey}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs rounded-xl transition cursor-pointer"
+                  title="Clear Key"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">GitHub Username / Organization</label>
-              <input
-                type="text"
-                placeholder="e.g. ibrahimfaruq"
-                value={ghOwner}
-                onChange={(e) => setGhOwner(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Repository Name</label>
-              <input
-                type="text"
-                placeholder="e.g. deriv-smc-ai-workstation"
-                value={ghRepo}
-                onChange={(e) => setGhRepo(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Branch Name</label>
-              <input
-                type="text"
-                placeholder="main"
-                value={ghBranch}
-                onChange={(e) => setGhBranch(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-cyan-500"
-              />
-            </div>
+            {geminiKeySaved && (
+              <p className="text-[11px] text-emerald-600 font-semibold mt-1.5 flex items-center gap-1">
+                <Check className="h-3.5 w-3.5" /> Gemini API Key saved for this device!
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Diagnostics & Cache Management */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 relative overflow-hidden">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="bg-indigo-500/10 border border-indigo-500/20 p-2.5 rounded-xl text-indigo-600">
+            <Zap className="h-6 w-6" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
+              System Diagnostics & Cache Purge
+            </h3>
+            <p className="text-xs text-slate-600">
+              Test server responsiveness and purge stale cached assets
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleTestHealth}
+              disabled={healthLoading}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 font-medium text-xs rounded-xl transition flex items-center gap-2 cursor-pointer"
+            >
+              {healthLoading ? (
+                <div className="h-3.5 w-3.5 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <Zap className="h-3.5 w-3.5 text-amber-500" />
+              )}
+              Test Live Server Connection
+            </button>
+
+            <button
+              onClick={handlePurgeCacheAndReload}
+              className="px-4 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-medium text-xs rounded-xl transition flex items-center gap-2 cursor-pointer"
+            >
+              <RefreshCw className="h-3.5 w-3.5 text-rose-500" />
+              Purge Browser Cache & Force Reload
+            </button>
           </div>
 
-          {ghResult && (
-            <div className={`p-3 rounded-xl border text-xs font-mono leading-relaxed ${ghResult.success ? "bg-emerald-950/40 border-emerald-800 text-emerald-300" : "bg-red-950/40 border-red-800 text-red-300"}`}>
-              {ghResult.message}
+          {healthStatus && (
+            <div className={`p-3 rounded-xl border text-xs font-mono ${healthStatus.includes("Connected") ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-rose-50 border-rose-200 text-rose-800"}`}>
+              {healthStatus}
             </div>
           )}
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <button
-              onClick={handleGitHubSync}
-              disabled={ghLoading}
-              className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-slate-950 font-bold text-xs rounded-xl transition flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20"
-            >
-              {ghLoading ? (
-                <div className="h-4 w-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <Code className="h-4 w-4" />
-              )}
-              {ghLoading ? "Syncing & Pushing to GitHub..." : "Sync & Push to GitHub Now"}
-            </button>
-            <a
-              href="https://github.com/new"
-              target="_blank"
-              rel="noreferrer"
-              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 font-medium text-xs rounded-xl transition flex items-center gap-2"
-            >
-              <ExternalLink className="h-4 w-4 text-cyan-400" />
-              Create New GitHub Repo
-            </a>
-          </div>
         </div>
       </div>
     </div>
